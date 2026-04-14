@@ -121,12 +121,29 @@ def can_edit_profile(user, target_user):
 def can_delete_user(user, target_user):
     """
     Check if user can delete target_user.
-    Only admins can delete users.
+    
+    Rules:
+    - Users cannot delete anyone
+    - Staff can only delete regular users
+    - Admins can delete anyone
+    - No one can delete themselves
     """
+    # Cannot delete yourself
     if user == target_user:
-        return False  # Cannot delete yourself
+        return False
+    
+    # Only admins and superusers can delete
     if user.is_superuser:
         return True
+    
+    # Staff can delete, but not other staff or admins
+    if user.is_staff:
+        # Staff can only delete regular users, not staff or admins
+        if target_user.is_staff or target_user.is_superuser:
+            return False
+        return True
+    
+    # Regular users cannot delete anyone
     return False
 
 
@@ -144,3 +161,118 @@ def get_user_role(user):
     if user.groups.filter(name='instructor').exists():
         return 'instructor'
     return 'user'
+
+
+# ============================================================================
+# IDOR (Insecure Direct Object Reference) Prevention Functions
+# ============================================================================
+# These functions enforce object-level access control to prevent IDOR attacks.
+# They should be used in any view that retrieves a user or profile by ID.
+# ============================================================================
+
+
+def get_viewable_user(current_user, user_id):
+    """
+    Atomically get a user and verify the current user can view it.
+    
+    IDOR Prevention: This function prevents unauthorized viewing of user data
+    by checking ownership at retrieval time. Returns None if access is denied.
+    
+    Rules:
+    - Users can view their own profile
+    - Staff can view any user
+    - Instructors can view any user
+    - Regular users cannot view other users
+    
+    Args:
+        current_user: The user making the request
+        user_id: The ID of the user to retrieve
+        
+    Returns:
+        User object if access is allowed, None if denied
+    """
+    from django.contrib.auth.models import User
+    
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return None
+    
+    # Check permission
+    if not can_view_profile(current_user, target_user):
+        return None
+    
+    return target_user
+
+
+def get_editable_user(current_user, user_id):
+    """
+    Atomically get a user and verify the current user can edit it.
+    
+    IDOR Prevention: This function prevents unauthorized modification of user data.
+    Returns None if access is denied.
+    
+    Rules:
+    - Users can edit their own profile
+    - Staff can edit any user
+    - Only admins can edit admin accounts
+    
+    Args:
+        current_user: The user making the request
+        user_id: The ID of the user to retrieve
+        
+    Returns:
+        User object if access is allowed, None if denied
+    """
+    from django.contrib.auth.models import User
+    
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return None
+    
+    # Check permission
+    if not can_edit_profile(current_user, target_user):
+        return None
+    
+    return target_user
+
+
+def get_deletable_user(current_user, user_id):
+    """
+    Atomically get a user and verify the current user can delete it.
+    
+    IDOR Prevention: This function prevents unauthorized deletion of user accounts.
+    Enforces granular deletion rules:
+    - Users cannot delete anyone
+    - Staff cannot delete other staff
+    - Staff cannot delete admins
+    - Staff cannot delete their own account
+    - Only admins can delete anyone (including other admins)
+    
+    Returns None if access is denied.
+    
+    Args:
+        current_user: The user making the request
+        user_id: The ID of the user to delete
+        
+    Returns:
+        User object if deletion is allowed, None if denied
+    """
+    from django.contrib.auth.models import User
+    
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return None
+    
+    # Check permission (updated to prevent staff from deleting staff)
+    if not can_delete_user(current_user, target_user):
+        return None
+    
+    # Additional rule: Staff cannot delete other staff (only admins can)
+    if current_user.is_staff and not current_user.is_superuser:
+        if target_user.is_staff or target_user.is_superuser:
+            return None
+    
+    return target_user

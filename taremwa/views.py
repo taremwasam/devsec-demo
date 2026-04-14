@@ -9,7 +9,9 @@ from .forms import RegistrationForm, LoginForm, PasswordChangeForm, UserProfileF
 from .models import UserProfile
 from .authorization import (
     can_view_profile, can_edit_profile, can_delete_user, 
-    staff_required, instructor_required, get_user_role
+    staff_required, instructor_required, get_user_role,
+    # IDOR Prevention Functions
+    get_viewable_user, get_editable_user, get_deletable_user
 )
 
 
@@ -75,25 +77,34 @@ def profile(request, user_id=None):
     User profile view - can view own or (if staff) others' profiles.
     If user_id is None, shows current user's profile.
     If user_id is provided, shows that user's profile (with permission checks).
+    
+    IDOR Prevention: Uses get_viewable_user and get_editable_user for atomic
+    access control checks, preventing IDOR attacks via ID manipulation.
     """
     if user_id is None:
-        # Viewing own profile
+        # Viewing own profile - no IDOR risk
         profile = get_object_or_404(UserProfile, user=request.user)
         target_user = request.user
     else:
-        # Viewing other user's profile
-        target_user = get_object_or_404(User, id=user_id)
-        profile = get_object_or_404(UserProfile, user=target_user)
-        
-        # Check permission to view this profile
-        if not can_view_profile(request.user, target_user):
-            messages.error(request, 'You do not have permission to view this profile.')
+        # Viewing other user's profile - IDOR check required
+        # Use IDOR prevention function: atomically get user AND check permission
+        target_user = get_viewable_user(request.user, user_id)
+        if target_user is None:
+            messages.error(request, 'Profile not found or access denied.')
             return HttpResponseForbidden('Forbidden: You cannot access this profile.')
+        
+        profile = get_object_or_404(UserProfile, user=target_user)
     
     # Check if editing
     if request.method == 'POST':
-        # Check permission to edit this profile
-        if not can_edit_profile(request.user, target_user):
+        # IDOR check for editing: use atomic access control function
+        if user_id is not None:
+            editable_user = get_editable_user(request.user, user_id)
+            if editable_user is None:
+                messages.error(request, 'You do not have permission to edit this profile.')
+                return HttpResponseForbidden('Forbidden: You cannot edit this profile.')
+            target_user = editable_user
+        elif not can_edit_profile(request.user, request.user):
             messages.error(request, 'You do not have permission to edit this profile.')
             return HttpResponseForbidden('Forbidden: You cannot edit this profile.')
         
@@ -191,17 +202,16 @@ def view_profile(request, user_id):
 
 @staff_required
 def delete_user(request, user_id):
-    """Delete user - staff only"""
-    target_user = get_object_or_404(User, id=user_id)
+    """
+    Delete user - staff only with granular object-level access control.
     
-    # Cannot delete yourself
-    if target_user == request.user:
-        messages.error(request, 'You cannot delete your own account.')
-        return redirect('taremwa:view_all_users')
-    
-    # Cannot delete superusers (only superusers can)
-    if target_user.is_superuser and not request.user.is_superuser:
-        messages.error(request, 'You cannot delete administrator accounts.')
+    IDOR Prevention: Uses get_deletable_user for atomic access control check.
+    Staff cannot delete other staff or admins. Only admins can delete staff.
+    """
+    # IDOR check: Use atomic access control function
+    target_user = get_deletable_user(request.user, user_id)
+    if target_user is None:
+        messages.error(request, 'User not found or you do not have permission to delete this user.')
         return redirect('taremwa:view_all_users')
     
     if request.method == 'POST':
