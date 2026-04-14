@@ -1,0 +1,50 @@
+{% extends 'taremwa/base.html' %}
+
+{% block title %}Dashboard - Taremwa Auth Service{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h2 class="mb-4">Dashboard</h2>
+    
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Welcome, {{ user.first_name|default:user.username }}!</h5>
+            <p class="card-text">You are logged in to the Taremwa Authentication Service.</p>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title">Account Information</h6>
+                    <ul class="list-unstyled">
+                        <li><strong>Username:</strong> {{ user.username }}</li>
+                        <li><strong>Email:</strong> {{ user.email }}</li>
+                        <li><strong>Full Name:</strong> {{ user.get_full_name|default:"Not set" }}</li>
+                        <li><strong>Member Since:</strong> {{ user.date_joined|date:"M d, Y" }}</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title">Quick Actions</h6>
+                    <a href="{% url 'taremwa:profile' %}" class="btn btn-sm btn-outline-primary">Edit Profile</a>
+                    <a href="{% url 'taremwa:change_password' %}" class="btn btn-sm btn-outline-warning">Change Password</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if profile.bio %}
+    <div class="card mt-4">
+        <div class="card-body">
+            <h6 class="card-title">Bio</h6>
+            <p class="card-text">{{ profile.bio }}</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

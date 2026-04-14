@@ -1,0 +1,41 @@
+{% extends 'taremwa/base.html' %}
+
+{% block title %}Register - Taremwa Auth Service{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <h2 class="text-center mb-4">Create an Account</h2>
+    
+    <form method="POST">
+        {% csrf_token %}
+        
+        {% for field in form %}
+            <div class="form-group">
+                {{ field.label_tag }}
+                {{ field }}
+                {% if field.errors %}
+                    <div class="text-danger small mt-2">
+                        {% for error in field.errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+                {% for error in form.non_field_errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary w-100">Register</button>
+    </form>
+
+    <p class="text-center mt-3">
+        Already have an account? <a href="{% url 'taremwa:login' %}">Login here</a>
+    </p>
+</div>
+{% endblock %}
