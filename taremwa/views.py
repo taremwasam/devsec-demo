@@ -21,10 +21,20 @@ from .authorization import (
     get_viewable_user, get_editable_user, get_deletable_user
 )
 from .login_throttle import LoginThrottler, get_client_ip
+from .redirect_utils import get_safe_redirect_url, get_next_parameter_for_template
 
 
 def register(request):
-    """User registration view"""
+    """
+    User registration view with safe redirect handling.
+    
+    Security features:
+    - Validates email uniqueness
+    - Validates username uniqueness
+    - Creates associated UserProfile
+    - Validates 'next' parameter to prevent open redirects
+    - Redirects to login or specified safe URL
+    """
     if request.user.is_authenticated:
         return redirect('taremwa:dashboard')
     
@@ -36,7 +46,11 @@ def register(request):
                 # Create associated UserProfile
                 UserProfile.objects.get_or_create(user=user)
                 messages.success(request, 'Registration successful! Please log in.')
-                return redirect('taremwa:login')
+                
+                # Redirect to login (or safe next URL if provided)
+                # Open Redirect Prevention: get_safe_redirect_url validates the URL
+                next_url = get_safe_redirect_url(request, 'taremwa:login', 'next')
+                return redirect(next_url)
             except IntegrityError:
                 messages.error(request, 'An error occurred during registration. Please try again.')
     else:
@@ -47,19 +61,28 @@ def register(request):
 
 def user_login(request):
     """
-    User login view with brute-force protection.
+    User login view with brute-force protection and safe redirect handling.
     
     Security features:
     - Tracks failed login attempts per account
     - Tracks failed attempts per IP address
     - Temporarily locks account after 5 failed attempts
     - 15-minute lockout period
+    - Validates 'next' parameter to prevent open redirects
+    
+    Redirect Validation:
+    - Accepts optional 'next' parameter via GET or POST
+    - Validates redirect target is internal (same domain)
+    - Rejects external URLs, protocol changes, and malicious redirects
+    - Falls back to dashboard if 'next' parameter is unsafe
     """
     if request.user.is_authenticated:
         return redirect('taremwa:dashboard')
     
     # Get client IP for throttling
     client_ip = get_client_ip(request)
+    # Get next parameter for redirect (will be validated at redirect time)
+    next_param = get_next_parameter_for_template(request)
     
     if request.method == 'POST':
         form = LoginForm(request.POST)
@@ -78,7 +101,7 @@ def user_login(request):
                     request,
                     'Too many failed login attempts. Please try again later.'
                 )
-                return render(request, 'taremwa/login.html', {'form': form})
+                return render(request, 'taremwa/login.html', {'form': form, 'next': next_param})
             
             # Attempt authentication
             user = authenticate(request, username=username, password=password)
@@ -91,7 +114,11 @@ def user_login(request):
                 LoginThrottler.clear_failures(username=username, ip_address=client_ip)
                 
                 messages.success(request, f'Welcome back, {user.username}!')
-                return redirect('taremwa:dashboard')
+                
+                # Redirect to safe next URL or dashboard
+                # Open Redirect Prevention: get_safe_redirect_url validates the URL
+                next_url = get_safe_redirect_url(request, 'taremwa:dashboard', 'next')
+                return redirect(next_url)
             else:
                 # Failed login - record and check throttle
                 LoginThrottler.record_attempt(username, client_ip, successful=False)
@@ -110,10 +137,13 @@ def user_login(request):
                         request,
                         f'Warning: {remaining} login attempt(s) remaining before temporary lockout.'
                     )
+                
+                # Return form with next parameter preserved for UX
+                return render(request, 'taremwa/login.html', {'form': form, 'next': next_param})
     else:
         form = LoginForm()
     
-    return render(request, 'taremwa/login.html', {'form': form})
+    return render(request, 'taremwa/login.html', {'form': form, 'next': next_param})
 
 
 @login_required(login_url='taremwa:login')
@@ -203,10 +233,21 @@ def change_password(request):
 
 
 def user_logout(request):
-    """User logout view"""
+    """
+    User logout view with safe redirect handling.
+    
+    Security features:
+    - Logs out the user
+    - Validates 'next' parameter to prevent open redirects
+    - Redirects to login page or specified safe URL
+    """
     logout(request)
     messages.info(request, 'You have been logged out successfully.')
-    return redirect('taremwa:login')
+    
+    # Get safe redirect URL - defaults to login page
+    # Open Redirect Prevention: get_safe_redirect_url validates the URL
+    next_url = get_safe_redirect_url(request, 'taremwa:login', 'next')
+    return redirect(next_url)
 
 
 @staff_required
