@@ -20,6 +20,7 @@ from .authorization import (
     # IDOR Prevention Functions
     get_viewable_user, get_editable_user, get_deletable_user
 )
+from .login_throttle import LoginThrottler, get_client_ip
 
 
 def register(request):
@@ -45,22 +46,70 @@ def register(request):
 
 
 def user_login(request):
-    """User login view"""
+    """
+    User login view with brute-force protection.
+    
+    Security features:
+    - Tracks failed login attempts per account
+    - Tracks failed attempts per IP address
+    - Temporarily locks account after 5 failed attempts
+    - 15-minute lockout period
+    """
     if request.user.is_authenticated:
         return redirect('taremwa:dashboard')
+    
+    # Get client IP for throttling
+    client_ip = get_client_ip(request)
     
     if request.method == 'POST':
         form = LoginForm(request.POST)
         if form.is_valid():
             username = form.cleaned_data.get('username')
             password = form.cleaned_data.get('password')
+            
+            # Check if account/IP is throttled
+            if LoginThrottler.is_throttled(username, client_ip):
+                # Log the throttle event
+                throttle_reason = LoginThrottler.get_throttle_reason(username, client_ip)
+                print(f"[SECURITY] Login throttled for {username} from {client_ip} - {throttle_reason}")
+                
+                # Show generic message to prevent information leakage
+                messages.error(
+                    request,
+                    'Too many failed login attempts. Please try again later.'
+                )
+                return render(request, 'taremwa/login.html', {'form': form})
+            
+            # Attempt authentication
             user = authenticate(request, username=username, password=password)
+            
             if user is not None:
+                # Successful login
                 login(request, user)
+                LoginThrottler.record_attempt(username, client_ip, successful=True)
+                # Clear failure counters on success
+                LoginThrottler.clear_failures(username=username, ip_address=client_ip)
+                
                 messages.success(request, f'Welcome back, {user.username}!')
                 return redirect('taremwa:dashboard')
             else:
+                # Failed login - record and check throttle
+                LoginThrottler.record_attempt(username, client_ip, successful=False)
+                failures_account, failures_ip = LoginThrottler.get_failure_count(username, client_ip)
+                
+                # Show generic error (don't reveal if user exists)
                 messages.error(request, 'Invalid username or password.')
+                
+                # Optionally warn user if they're close to lockout
+                remaining = max(
+                    5 - failures_account,
+                    5 - failures_ip
+                )
+                if 0 < remaining < 3:
+                    messages.warning(
+                        request,
+                        f'Warning: {remaining} login attempt(s) remaining before temporary lockout.'
+                    )
     else:
         form = LoginForm()
     
