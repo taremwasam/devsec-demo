@@ -263,6 +263,11 @@ def delete_user(request, user_id):
     
     IDOR Prevention: Uses get_deletable_user for atomic access control check.
     Staff cannot delete other staff or admins. Only admins can delete staff.
+    
+    CSRF Protection: Requires explicit user confirmation (typing username) to delete.
+    This works in conjunction with Django's CSRF middleware to ensure:
+    1. Request comes from user's own browser (CSRF token)
+    2. User explicitly confirms deletion (confirmation field validation)
     """
     # IDOR check: Use atomic access control function
     target_user = get_deletable_user(request.user, user_id)
@@ -271,9 +276,27 @@ def delete_user(request, user_id):
         return redirect('taremwa:view_all_users')
     
     if request.method == 'POST':
-        username = target_user.username
+        # CSRF Protection: Validate confirmation field matches username
+        # This ensures the user explicitly confirmed the deletion
+        confirm_input = request.POST.get('confirm', '').strip()
+        target_username = target_user.username
+        
+        if confirm_input != target_username:
+            # Confirmation field doesn't match - abort deletion
+            # This prevents CSRF attacks that try to delete without proper confirmation
+            messages.error(
+                request,
+                f'Confirmation failed. Please type "{target_username}" exactly to confirm deletion.'
+            )
+            context = {
+                'target_user': target_user,
+                'user_role': get_user_role(request.user),
+            }
+            return render(request, 'taremwa/confirm_delete_user.html', context)
+        
+        # Confirmation validated - proceed with deletion
         target_user.delete()
-        messages.success(request, f'User {username} has been deleted.')
+        messages.success(request, f'User {target_username} has been deleted.')
         return redirect('taremwa:view_all_users')
     
     context = {
