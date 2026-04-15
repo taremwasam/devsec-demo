@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
-from django.contrib.auth.forms import UserCreationForm, UserChangeForm
+from django.contrib.auth.forms import UserCreationForm, UserChangeForm, SetPasswordForm
 from django.core.exceptions import ValidationError
 from .models import UserProfile
 
@@ -138,3 +138,43 @@ class UserProfileForm(forms.ModelForm):
             profile.user.save()
             profile.save()
         return profile
+
+
+class PasswordResetRequestForm(forms.Form):
+    """
+    Form for requesting password reset via email.
+    
+    Security: Uses generic success message to prevent user enumeration.
+    If email exists, user receives reset link. If not, generic message shown.
+    """
+    email = forms.EmailField(
+        widget=forms.EmailInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter your email address',
+            'autocomplete': 'email'
+        })
+    )
+
+
+class PasswordResetConfirmForm(SetPasswordForm):
+    """
+    Form for confirming password reset with new password.
+    
+    Extends Django's SetPasswordForm which:
+    - Validates new passwords match
+    - Validates password strength against AUTH_PASSWORD_VALIDATORS
+    - Prevents use of common passwords
+    - Provides clear error messages
+    """
+    
+    def __init__(self, user, *args, **kwargs):
+        super().__init__(user, *args, **kwargs)
+        # Apply Bootstrap styling to password fields
+        self.fields['new_password1'].widget.attrs.update({
+            'class': 'form-control',
+            'placeholder': 'New Password'
+        })
+        self.fields['new_password2'].widget.attrs.update({
+            'class': 'form-control',
+            'placeholder': 'Confirm Password'
+        })

@@ -54,7 +54,7 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'taremwa:profile' %}">Profile</a>
                         </li>
-                        {% if user.is_staff or user.groups.all|icontains:"staff" %}
+                        {% if user.is_staff %}
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" id="staffMenu" role="button" data-bs-toggle="dropdown">
                                     <span class="badge bg-warning">Staff</span>
@@ -63,14 +63,8 @@
                                     <li><a class="dropdown-item" href="{% url 'taremwa:staff_dashboard' %}">Staff Dashboard</a></li>
                                     <li><a class="dropdown-item" href="{% url 'taremwa:view_all_users' %}">View All Users</a></li>
                                     <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item" href="{% url 'taremwa:admin:index' %}">Django Admin</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'admin:index' %}">Django Admin</a></li>
                                 </ul>
-                            </li>
-                        {% elif user.groups.all|icontains:"instructor" %}
-                            <li class="nav-item">
-                                <a class="nav-link" href="{% url 'taremwa:view_all_users' %}">
-                                    <span class="badge bg-info">Instructor</span> Users
-                                </a>
                             </li>
                         {% endif %}
                         <li class="nav-item">
