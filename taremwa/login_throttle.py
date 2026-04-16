@@ -31,6 +31,11 @@ class LoginThrottler:
     def _get_cache_key(key_type: str, identifier: str) -> str:
         """Generate cache key for throttle tracking."""
         return f"login_throttle:{key_type}:{identifier}"
+
+    @staticmethod
+    def _get_ip_accounts_key(ip_address: str) -> str:
+        """Generate cache key for usernames seen failing from an IP."""
+        return LoginThrottler._get_cache_key('ip_accounts', ip_address)
     
     @staticmethod
     def record_attempt(username: str, ip_address: str, successful: bool) -> None:
@@ -57,16 +62,20 @@ class LoginThrottler:
         """Increment failure counts in cache for both account and IP."""
         username_key = LoginThrottler._get_cache_key('username', username)
         ip_key = LoginThrottler._get_cache_key('ip', ip_address)
-        
-        # Increment counters in cache
+        ip_accounts_key = LoginThrottler._get_ip_accounts_key(ip_address)
+
+        # Initialize counters if missing, then increment safely.
+        if cache.get(username_key) is None:
+            cache.set(username_key, 0, ATTEMPT_WINDOW)
+        if cache.get(ip_key) is None:
+            cache.set(ip_key, 0, ATTEMPT_WINDOW)
+        usernames_for_ip = cache.get(ip_accounts_key) or []
+        if username not in usernames_for_ip:
+            usernames_for_ip.append(username)
+            cache.set(ip_accounts_key, usernames_for_ip, ATTEMPT_WINDOW)
+
         cache.incr(username_key, 1)
         cache.incr(ip_key, 1)
-        
-        # Set expiration if this is the first attempt
-        if cache.get(username_key) == 1:
-            cache.expire(username_key, ATTEMPT_WINDOW)
-        if cache.get(ip_key) == 1:
-            cache.expire(ip_key, ATTEMPT_WINDOW)
     
     @staticmethod
     def get_failure_count(username: str, ip_address: str) -> tuple:
@@ -99,9 +108,13 @@ class LoginThrottler:
         username_failures, ip_failures = LoginThrottler.get_failure_count(
             username, ip_address
         )
-        
+        usernames_for_ip = cache.get(LoginThrottler._get_ip_accounts_key(ip_address), [])
+
         # Throttle if either username or IP exceeds limit
-        return username_failures >= MAX_LOGIN_ATTEMPTS or ip_failures >= MAX_LOGIN_ATTEMPTS
+        return (
+            username_failures >= MAX_LOGIN_ATTEMPTS
+            or len(usernames_for_ip) >= MAX_LOGIN_ATTEMPTS
+        )
     
     @staticmethod
     def get_throttle_reason(username: str, ip_address: str) -> str:
@@ -114,12 +127,13 @@ class LoginThrottler:
         username_failures, ip_failures = LoginThrottler.get_failure_count(
             username, ip_address
         )
+        usernames_for_ip = cache.get(LoginThrottler._get_ip_accounts_key(ip_address), [])
         
         reasons = []
         if username_failures >= MAX_LOGIN_ATTEMPTS:
             reasons.append(f"account ({username_failures} failures)")
-        if ip_failures >= MAX_LOGIN_ATTEMPTS:
-            reasons.append(f"IP ({ip_failures} failures)")
+        if len(usernames_for_ip) >= MAX_LOGIN_ATTEMPTS:
+            reasons.append(f"IP ({ip_failures} failures across {len(usernames_for_ip)} accounts)")
         
         return " + ".join(reasons) if reasons else "unknown"
     
@@ -141,6 +155,7 @@ class LoginThrottler:
         if ip_address:
             ip_key = LoginThrottler._get_cache_key('ip', ip_address)
             cache.delete(ip_key)
+            cache.delete(LoginThrottler._get_ip_accounts_key(ip_address))
     
     @staticmethod
     def get_recent_attempts(username: str = None, ip_address: str = None, 

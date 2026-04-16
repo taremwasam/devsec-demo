@@ -9,6 +9,7 @@ from django.db import IntegrityError
 from django.http import HttpResponseForbidden
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
+from .audit import get_actor_label, hash_identifier, log_security_event
 from .forms import (
     RegistrationForm, LoginForm, PasswordChangeForm, UserProfileForm,
     PasswordResetRequestForm, PasswordResetConfirmForm
@@ -45,6 +46,13 @@ def register(request):
                 user = form.save()
                 # Create associated UserProfile
                 UserProfile.objects.get_or_create(user=user)
+                log_security_event(
+                    'auth.registration',
+                    actor='anonymous',
+                    target_user_id=user.pk,
+                    target_username=user.username,
+                    email_hash=hash_identifier(user.email),
+                )
                 messages.success(request, 'Registration successful! Please log in.')
                 
                 # Redirect to login (or safe next URL if provided)
@@ -92,9 +100,14 @@ def user_login(request):
             
             # Check if account/IP is throttled
             if LoginThrottler.is_throttled(username, client_ip):
-                # Log the throttle event
                 throttle_reason = LoginThrottler.get_throttle_reason(username, client_ip)
-                print(f"[SECURITY] Login throttled for {username} from {client_ip} - {throttle_reason}")
+                log_security_event(
+                    'auth.login_throttled',
+                    actor='anonymous',
+                    attempted_username=username,
+                    ip_address=client_ip,
+                    reason=throttle_reason,
+                )
                 
                 # Show generic message to prevent information leakage
                 messages.error(
@@ -112,6 +125,14 @@ def user_login(request):
                 LoginThrottler.record_attempt(username, client_ip, successful=True)
                 # Clear failure counters on success
                 LoginThrottler.clear_failures(username=username, ip_address=client_ip)
+                log_security_event(
+                    'auth.login',
+                    actor=get_actor_label(user),
+                    outcome='success',
+                    target_user_id=user.pk,
+                    target_username=user.username,
+                    ip_address=client_ip,
+                )
                 
                 messages.success(request, f'Welcome back, {user.username}!')
                 
@@ -123,6 +144,15 @@ def user_login(request):
                 # Failed login - record and check throttle
                 LoginThrottler.record_attempt(username, client_ip, successful=False)
                 failures_account, failures_ip = LoginThrottler.get_failure_count(username, client_ip)
+                log_security_event(
+                    'auth.login',
+                    actor='anonymous',
+                    outcome='failure',
+                    attempted_username=username,
+                    ip_address=client_ip,
+                    failures_for_account=failures_account,
+                    failures_for_ip=failures_ip,
+                )
                 
                 # Show generic error (don't reveal if user exists)
                 messages.error(request, 'Invalid username or password.')
@@ -224,6 +254,13 @@ def change_password(request):
         form = PasswordChangeForm(request.user, request.POST)
         if form.is_valid():
             form.save()
+            log_security_event(
+                'auth.password_change',
+                actor=get_actor_label(request.user),
+                outcome='success',
+                target_user_id=request.user.pk,
+                target_username=request.user.username,
+            )
             messages.success(request, 'Password changed successfully!')
             return redirect('taremwa:profile')
     else:
@@ -241,7 +278,16 @@ def user_logout(request):
     - Validates 'next' parameter to prevent open redirects
     - Redirects to login page or specified safe URL
     """
+    actor_label = get_actor_label(request.user)
+    user_id = request.user.pk if request.user.is_authenticated else None
+    username = request.user.username if request.user.is_authenticated else None
     logout(request)
+    log_security_event(
+        'auth.logout',
+        actor=actor_label,
+        target_user_id=user_id,
+        target_username=username,
+    )
     messages.info(request, 'You have been logged out successfully.')
     
     # Get safe redirect URL - defaults to login page
@@ -336,6 +382,12 @@ def delete_user(request, user_id):
             return render(request, 'taremwa/confirm_delete_user.html', context)
         
         # Confirmation validated - proceed with deletion
+        log_security_event(
+            'privilege.account_deleted',
+            actor=get_actor_label(request.user),
+            target_user_id=target_user.pk,
+            target_username=target_user.username,
+        )
         target_user.delete()
         messages.success(request, f'User {target_username} has been deleted.')
         return redirect('taremwa:view_all_users')
@@ -376,6 +428,14 @@ def password_reset_request(request):
             
             # Only send email if user exists
             if user:
+                log_security_event(
+                    'auth.password_reset_request',
+                    actor='anonymous',
+                    outcome='account_found',
+                    target_user_id=user.pk,
+                    target_username=user.username,
+                    email_hash=hash_identifier(email),
+                )
                 # Generate secure token
                 token = default_token_generator.make_token(user)
                 uid = urlsafe_base64_encode(force_bytes(user.pk))
@@ -413,8 +473,22 @@ Taremwa UAS Team
                         fail_silently=False,
                     )
                 except Exception as e:
-                    # Log error but still show success to prevent enumeration
-                    print(f"Error sending password reset email: {e}")
+                    log_security_event(
+                        'auth.password_reset_request',
+                        actor='anonymous',
+                        outcome='email_delivery_failed',
+                        target_user_id=user.pk,
+                        target_username=user.username,
+                        email_hash=hash_identifier(email),
+                        error_type=type(e).__name__,
+                    )
+            else:
+                log_security_event(
+                    'auth.password_reset_request',
+                    actor='anonymous',
+                    outcome='account_not_found',
+                    email_hash=hash_identifier(email),
+                )
             
             # Always show success message (prevents user enumeration through UI)
             messages.success(
@@ -462,6 +536,13 @@ def password_reset_confirm(request, uidb64, token):
             form = PasswordResetConfirmForm(user, request.POST)
             if form.is_valid():
                 form.save()
+                log_security_event(
+                    'auth.password_reset_confirm',
+                    actor='anonymous',
+                    outcome='success',
+                    target_user_id=user.pk,
+                    target_username=user.username,
+                )
                 messages.success(
                     request,
                     'Your password has been successfully reset. '
@@ -479,6 +560,13 @@ def password_reset_confirm(request, uidb64, token):
         })
     else:
         # Token is invalid or expired
+        log_security_event(
+            'auth.password_reset_confirm',
+            actor='anonymous',
+            outcome='invalid_or_expired',
+            target_user_id=user.pk if user else None,
+            uid_hint=uidb64[:12],
+        )
         messages.error(
             request,
             'The password reset link is invalid or has expired. '
