@@ -1,3 +1,5 @@
+import mimetypes
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
@@ -6,7 +8,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.contrib import messages
 from django.core.mail import send_mail
 from django.db import IntegrityError
-from django.http import HttpResponseForbidden
+from django.http import FileResponse, Http404, HttpResponseForbidden
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from .audit import get_actor_label, hash_identifier, log_security_event
@@ -23,6 +25,7 @@ from .authorization import (
 )
 from .login_throttle import LoginThrottler, get_client_ip
 from .redirect_utils import get_safe_redirect_url, get_next_parameter_for_template
+from .upload_security import safe_download_name
 
 
 def register(request):
@@ -224,7 +227,7 @@ def profile(request, user_id=None):
             messages.error(request, 'You do not have permission to edit this profile.')
             return HttpResponseForbidden('Forbidden: You cannot edit this profile.')
         
-        form = UserProfileForm(request.POST, instance=profile)
+        form = UserProfileForm(request.POST, request.FILES, instance=profile)
         if form.is_valid():
             form.save()
             messages.success(request, 'Profile updated successfully!')
@@ -245,6 +248,43 @@ def profile(request, user_id=None):
         'is_own_profile': is_own_profile,
         'can_edit': can_edit,
     })
+
+
+@login_required(login_url='taremwa:login')
+def download_profile_upload(request, user_id, upload_kind):
+    """
+    Serve private profile uploads through application authorization checks.
+
+    Files are stored outside any public media URL and are only returned after
+    verifying the requesting user is allowed to view the owning profile.
+    """
+    target_user = get_viewable_user(request.user, user_id)
+    if target_user is None:
+        return HttpResponseForbidden('Forbidden: You cannot access this file.')
+
+    profile = get_object_or_404(UserProfile, user=target_user)
+    field_map = {
+        'avatar': ('avatar', True, 'avatar'),
+        'document': ('document', False, 'document.pdf'),
+    }
+    if upload_kind not in field_map:
+        raise Http404('Upload not found.')
+
+    field_name, is_inline, fallback_name = field_map[upload_kind]
+    stored_file = getattr(profile, field_name)
+    if not stored_file:
+        raise Http404('Upload not found.')
+
+    guessed_type, _ = mimetypes.guess_type(stored_file.name)
+    response = FileResponse(
+        stored_file.open('rb'),
+        content_type=guessed_type or 'application/octet-stream',
+        as_attachment=not is_inline,
+        filename=safe_download_name(stored_file, fallback_name),
+    )
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @login_required(login_url='taremwa:login')

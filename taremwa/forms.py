@@ -4,6 +4,10 @@ from django.contrib.auth.forms import UserCreationForm, UserChangeForm, SetPassw
 from django.core.exceptions import ValidationError
 from django.utils.html import strip_tags
 from .models import UserProfile
+from .upload_security import (
+    validate_avatar_upload,
+    validate_document_upload,
+)
 
 
 class RegistrationForm(UserCreationForm):
@@ -114,10 +118,18 @@ class UserProfileForm(forms.ModelForm):
         required=False,
         widget=forms.TextInput(attrs={'class': 'form-control'})
     )
+    avatar = forms.FileField(
+        required=False,
+        widget=forms.ClearableFileInput(attrs={'class': 'form-control'}),
+    )
+    document = forms.FileField(
+        required=False,
+        widget=forms.ClearableFileInput(attrs={'class': 'form-control'}),
+    )
 
     class Meta:
         model = UserProfile
-        fields = ('bio',)
+        fields = ('bio', 'avatar', 'document')
         widgets = {
             'bio': forms.Textarea(attrs={'class': 'form-control', 'rows': 4})
         }
@@ -128,11 +140,25 @@ class UserProfileForm(forms.ModelForm):
             self.fields['email'].initial = self.instance.user.email
             self.fields['first_name'].initial = self.instance.user.first_name
             self.fields['last_name'].initial = self.instance.user.last_name
+        self._original_avatar_name = self.instance.avatar.name if self.instance.pk and self.instance.avatar else ''
+        self._original_document_name = self.instance.document.name if self.instance.pk and self.instance.document else ''
 
     def clean_bio(self):
         """Store bios as plain text so profile content cannot persist unsafe markup."""
         bio = self.cleaned_data.get('bio', '')
         return strip_tags(bio)
+
+    def clean_avatar(self):
+        avatar = self.cleaned_data.get('avatar')
+        if avatar:
+            validate_avatar_upload(avatar)
+        return avatar
+
+    def clean_document(self):
+        document = self.cleaned_data.get('document')
+        if document:
+            validate_document_upload(document)
+        return document
 
     def save(self, commit=True):
         """Save profile and user data"""
@@ -143,6 +169,10 @@ class UserProfileForm(forms.ModelForm):
         if commit:
             profile.user.save()
             profile.save()
+            if self._original_avatar_name and self.cleaned_data.get('avatar') and self._original_avatar_name != profile.avatar.name:
+                profile.avatar.storage.delete(self._original_avatar_name)
+            if self._original_document_name and self.cleaned_data.get('document') and self._original_document_name != profile.document.name:
+                profile.document.storage.delete(self._original_document_name)
         return profile
 
 

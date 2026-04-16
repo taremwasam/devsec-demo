@@ -2,11 +2,27 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 
+from .upload_security import (
+    avatar_upload_to,
+    document_upload_to,
+    private_upload_storage,
+)
+
 
 class UserProfile(models.Model):
     """Extended user profile model"""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='taremwa_profile')
     bio = models.TextField(blank=True, max_length=500)
+    avatar = models.FileField(
+        upload_to=avatar_upload_to,
+        storage=private_upload_storage,
+        blank=True,
+    )
+    document = models.FileField(
+        upload_to=document_upload_to,
+        storage=private_upload_storage,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

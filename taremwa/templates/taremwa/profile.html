@@ -6,7 +6,7 @@
 <div class="dashboard-container">
     <h2 class="mb-4">Edit Profile</h2>
     
-    <form method="POST">
+    <form method="POST" enctype="multipart/form-data">
         {% csrf_token %}
         
         <div class="row">
@@ -54,6 +54,39 @@
             {% if form.bio.errors %}
                 <div class="text-danger small mt-2">{{ form.bio.errors }}</div>
             {% endif %}
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label for="id_avatar" class="form-label">{{ form.avatar.label_tag }}</label>
+                    {{ form.avatar }}
+                    <div class="form-text">Allowed: `.jpg`, `.jpeg`, `.png` up to 2 MB.</div>
+                    {% if profile.avatar %}
+                        <div class="mt-2">
+                            <a href="{% url 'taremwa:download_profile_upload' target_user.id 'avatar' %}">View current avatar</a>
+                        </div>
+                    {% endif %}
+                    {% if form.avatar.errors %}
+                        <div class="text-danger small mt-2">{{ form.avatar.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label for="id_document" class="form-label">{{ form.document.label_tag }}</label>
+                    {{ form.document }}
+                    <div class="form-text">Allowed: `.pdf` up to 5 MB. Served only to authorized users.</div>
+                    {% if profile.document %}
+                        <div class="mt-2">
+                            <a href="{% url 'taremwa:download_profile_upload' target_user.id 'document' %}">Download current document</a>
+                        </div>
+                    {% endif %}
+                    {% if form.document.errors %}
+                        <div class="text-danger small mt-2">{{ form.document.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
 
         <div class="form-group">

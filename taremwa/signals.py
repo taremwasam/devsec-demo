@@ -69,8 +69,8 @@ def audit_group_membership_changes(sender, instance, action, reverse, model, pk_
 
     actor = get_current_audit_actor()
     group_names = []
-    target_user_id = instance.pk
-    target_username = instance.username
+    target_user_id = None
+    target_username = None
 
     if reverse:
         group_names = [instance.name]
@@ -80,7 +80,12 @@ def audit_group_membership_changes(sender, instance, action, reverse, model, pk_
                 target_user_id = user.pk
                 target_username = user.username
     elif pk_set:
+        target_user_id = instance.pk
+        target_username = instance.username
         group_names = list(model.objects.filter(pk__in=pk_set).values_list("name", flat=True))
+    else:
+        target_user_id = instance.pk
+        target_username = instance.username
 
     log_security_event(
         "privilege.groups_changed",
@@ -100,8 +105,8 @@ def audit_user_permission_changes(sender, instance, action, reverse, model, pk_s
 
     actor = get_current_audit_actor()
     permission_labels = []
-    target_user_id = instance.pk
-    target_username = instance.username
+    target_user_id = None
+    target_username = None
 
     if reverse:
         permission_labels = [instance.codename]
@@ -111,9 +116,14 @@ def audit_user_permission_changes(sender, instance, action, reverse, model, pk_s
                 target_user_id = user.pk
                 target_username = user.username
     elif pk_set:
+        target_user_id = instance.pk
+        target_username = instance.username
         permission_labels = list(
             model.objects.filter(pk__in=pk_set).values_list("codename", flat=True)
         )
+    else:
+        target_user_id = instance.pk
+        target_username = instance.username
 
     log_security_event(
         "privilege.permissions_changed",

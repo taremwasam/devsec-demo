@@ -10,6 +10,7 @@ urlpatterns = [
     path('dashboard/', views.dashboard, name='dashboard'),
     path('profile/', views.profile, name='profile'),
     path('profile/<int:user_id>/', views.view_profile, name='view_profile'),
+    path('profile/<int:user_id>/files/<str:upload_kind>/', views.download_profile_upload, name='download_profile_upload'),
     path('change-password/', views.change_password, name='change_password'),
     
     # Password reset routes
