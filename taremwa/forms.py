@@ -2,6 +2,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm, SetPasswordForm
 from django.core.exceptions import ValidationError
+from django.utils.html import strip_tags
 from .models import UserProfile
 
 
@@ -127,6 +128,11 @@ class UserProfileForm(forms.ModelForm):
             self.fields['email'].initial = self.instance.user.email
             self.fields['first_name'].initial = self.instance.user.first_name
             self.fields['last_name'].initial = self.instance.user.last_name
+
+    def clean_bio(self):
+        """Store bios as plain text so profile content cannot persist unsafe markup."""
+        bio = self.cleaned_data.get('bio', '')
+        return strip_tags(bio)
 
     def save(self, commit=True):
         """Save profile and user data"""
