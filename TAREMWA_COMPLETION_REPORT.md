@@ -18,6 +18,8 @@ A complete **Django User Authentication Service (UAS)** has been successfully im
 #### Models
 - ✅ `UserProfile` - Extended user profile with bio and timestamps
 - ✅ OneToOne relationship with Django's User model
+- ✅ `avatar` - Secure ImageField with 2MB limit
+- ✅ `document` - Secure FileField for PDFs with 5MB limit
 - ✅ Auto-created via Django signals
 
 #### Forms
@@ -60,6 +62,10 @@ A complete **Django User Authentication Service (UAS)** has been successfully im
 - ✅ Server-side form validation
 - ✅ Session-based authentication
 - ✅ Secure password change flow
+- ✅ **File Upload Security**:
+    - MIME type and magic byte validation
+    - Randomized storage filenames
+    - Private storage root (non-publicly accessible)
 
 ### 4. Database
 - ✅ Migration created: `taremwa/migrations/0001_initial.py`
@@ -143,6 +149,11 @@ Form Validation:        ✅ PASS
 - ✅ Email/username uniqueness (no duplicates)
 - ✅ Old password verification before change
 - ✅ Secure session management
+- ✅ **Secure File Handling**:
+    - Validation of file signatures (magic bytes)
+    - Strict extension whitelisting (.jpg, .png, .pdf)
+    - Randomized internal filenames to prevent path traversal
+    - Auth-gated download views
 
 ### Not Implemented (Out of Scope)
 - Email verification (can be added)
@@ -320,6 +331,7 @@ Root/
 | Admin | ✅ | Full user management |
 | Tests | ✅ | 20 tests, 18+ passing |
 | Migrations | ✅ | Applied successfully |
+| File Security | ✅ | Signature and size validation |
 | Documentation | ✅ | README + Quickstart |
 | Security | ✅ | All requirements met |
 | **OVERALL** | **✅ COMPLETE** | Ready for submission |

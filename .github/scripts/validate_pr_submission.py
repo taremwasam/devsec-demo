@@ -246,22 +246,22 @@ def main() -> int:
     if missing_headings:
         print("Missing required sections:")
         for heading in missing_headings:
-            print(f"- {heading}")
+            print(f"::error title=Missing Section::The PR body is missing the required heading: ## {heading}")
 
     if empty_sections:
         print("Empty required sections:")
         for heading in empty_sections:
-            print(f"- {heading}")
+            print(f"::error title=Empty Section::The following section is empty or contains default values: ## {heading}")
 
     if unchecked_items:
         print("Unchecked required checklist items:")
         for item in unchecked_items:
-            print(f"- {item}")
+            print(f"::error title=Unchecked Item::Please complete and check the item: {item}")
 
     if assignment_linking_errors:
         print("Assignment branch validation errors:")
         for error in assignment_linking_errors:
-            print(f"- {error}")
+            print(f"::error title=Branching Error::{error}")
 
     return 1
 
