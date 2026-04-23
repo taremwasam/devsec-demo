@@ -45,7 +45,7 @@
 - Preparing the PR body and design note.
 
 ## What I Changed From AI Output
-- Kept the final configuration aligned with this repository’s actual bootstrap flow instead of applying a generic checklist unchanged.
+- Kept the final configuration aligned with this repository's actual bootstrap flow instead of applying a generic checklist unchanged.
 - Added explicit dotenv-loading control after the first test pass showed hidden coupling to the local `.env` file.
 - Limited the final change set to settings hardening and validation that I can explain directly.
 
